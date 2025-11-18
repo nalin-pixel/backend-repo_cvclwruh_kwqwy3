@@ -2,12 +2,12 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List
 from bson import ObjectId
 from datetime import datetime, timezone
 
 from database import db, create_document, get_documents
-from schemas import VideoJob, ClipRequest, ClipResult, DetectedMoment
+from schemas import VideoJob, VideoJobOut, ClipRequest, ClipResult, DetectedMoment
 
 app = FastAPI(title="AI Clipper Backend", description="Analyze YouTube links, find key moments, and generate clip overlays.")
 
@@ -55,7 +55,7 @@ def test_database():
 class AnalyzeRequest(BaseModel):
     youtube_url: str
 
-@app.post("/api/analyze", response_model=VideoJob)
+@app.post("/api/analyze", response_model=VideoJobOut)
 def analyze_youtube(req: AnalyzeRequest):
     """Simulate analysis of a YouTube link and store a job in DB.
     In a real system, you would fetch transcript/audio, run ML to detect highlights.
@@ -84,27 +84,35 @@ def analyze_youtube(req: AnalyzeRequest):
 
     job_id = create_document("videojob", job)
 
-    # Return with id string (embed into model-like dict)
-    return {**job.model_dump(), "_id": job_id}
+    # Return with id field that matches response model
+    return {**job.model_dump(), "id": job_id}
 
-@app.get("/api/jobs", response_model=List[VideoJob])
+@app.get("/api/jobs", response_model=List[VideoJobOut])
 def list_jobs(limit: int = 20):
     docs = get_documents("videojob", {}, limit)
-    # Normalize ObjectId and defaults
-    norm = []
+    norm: List[dict] = []
     for d in docs:
-        d["_id"] = str(d.get("_id"))
+        # Convert ObjectId to string and expose as id
+        _id = d.get("_id")
+        if isinstance(_id, ObjectId):
+            d["id"] = str(_id)
+        elif _id is not None:
+            d["id"] = str(_id)
+        # Remove raw _id to keep output clean (response_model filters anyway)
+        d.pop("_id", None)
         norm.append(d)
     return norm
 
-@app.get("/api/jobs/{job_id}")
+@app.get("/api/jobs/{job_id}", response_model=VideoJobOut)
 def get_job(job_id: str):
     try:
         doc = db["videojob"].find_one({"_id": ObjectId(job_id)})
         if not doc:
             raise HTTPException(status_code=404, detail="Job tidak ditemukan")
-        doc["_id"] = str(doc["_id"])
+        doc["id"] = str(doc.pop("_id"))
         return doc
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=400, detail="ID tidak valid")
 

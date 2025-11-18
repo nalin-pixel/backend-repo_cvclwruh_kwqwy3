@@ -57,6 +57,9 @@ class VideoJob(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
+class VideoJobOut(VideoJob):
+    id: str = Field(..., description="Document ID as string")
+
 class OverlayText(BaseModel):
     content: str
     position: Literal["top", "center", "bottom"] = "bottom"
@@ -79,4 +82,3 @@ class ClipResult(BaseModel):
     animation: str
     emoji: Optional[str] = None
     created_at: Optional[datetime] = None
-
